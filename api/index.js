@@ -45,8 +45,9 @@ export default async function handler(req, res) {
   await page.setContent(html, { waitUntil: 'networkidle2' })
 
   await page.waitForFunction(
-    () => document.querySelector('video')?.currentTime >= ${seconds},
-    { timeout: 8000 }
+    seconds => document.querySelector('video')?.currentTime >= seconds,
+    { timeout: 8000 },
+    seconds
   )
 
   const buffer = await page.screenshot({ type: 'jpeg' })
@@ -55,3 +56,4 @@ export default async function handler(req, res) {
   res.setHeader('Content-Type', 'image/jpeg')
   res.send(buffer)
 }
+ 
