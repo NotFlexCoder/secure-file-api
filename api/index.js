@@ -31,6 +31,8 @@ function parseTimeToSeconds(timeStr) {
   return num * (multipliers[unit] || 1)
 }
 
+const fallbackVideo = 'https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4'
+
 export default async (req, res) => {
   const { video, time, id } = req.query
 
@@ -41,8 +43,8 @@ export default async (req, res) => {
     return
   }
 
-  if (!video || !time) {
-    res.status(400).send('Missing ?video=<url>&time=1s/1min/1d/1mon/1yrs')
+  if (!time) {
+    res.status(400).send('Missing ?time=1s/1min/etc')
     return
   }
 
@@ -52,9 +54,14 @@ export default async (req, res) => {
     return
   }
 
+  let sourceVideo = fallbackVideo
+  if (video && video.startsWith('http')) {
+    sourceVideo = video
+  }
+
   try {
-    const videoResponse = await fetch(video)
-    if (!videoResponse.ok) throw new Error('Video download failed')
+    const videoResponse = await fetch(sourceVideo)
+    if (!videoResponse.ok) throw new Error('Failed to download video')
 
     const tempVideoPath = path.join(tmpdir(), `${uuidv4()}.mp4`)
     const tempImagePath = path.join(tmpdir(), `${uuidv4()}.jpg`)
@@ -77,6 +84,8 @@ export default async (req, res) => {
     cache[randId] = imageBuffer
     res.end(`?id=${randId}`)
   } catch (e) {
+    console.error('Video Processing Failed:', e.message)
     res.status(500).send('Error processing video.')
   }
 }
+ 
