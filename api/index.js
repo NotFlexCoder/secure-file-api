@@ -1,11 +1,19 @@
-import { createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg'
+import { createWriteStream } from 'fs'
+import { pipeline } from 'stream'
+import { promisify } from 'util'
 import { v4 as uuidv4 } from 'uuid'
 import fetch from 'node-fetch'
+import ffmpeg from 'fluent-ffmpeg'
+import ffmpegPath from 'ffmpeg-static'
+import { tmpdir } from 'os'
+import path from 'path'
 
-const ffmpeg = createFFmpeg({ log: false })
-const cache = {}
+const streamPipeline = promisify(pipeline)
+ffmpeg.setFfmpegPath(ffmpegPath)
 
 const defaultVideo = 'https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4'
+
+const cache = {}
 
 export default async (req, res) => {
   const { s, id } = req.query
@@ -22,22 +30,27 @@ export default async (req, res) => {
     return
   }
 
-  if (!ffmpeg.isLoaded()) await ffmpeg.load()
+  const videoResponse = await fetch(defaultVideo)
+  const tempVideoPath = path.join(tmpdir(), `${uuidv4()}.mp4`)
+  const tempImagePath = path.join(tmpdir(), `${uuidv4()}.jpg`)
 
-  const videoRes = await fetch(defaultVideo)
-  const videoData = await videoRes.arrayBuffer()
+  await streamPipeline(videoResponse.body, createWriteStream(tempVideoPath))
 
-  ffmpeg.FS('writeFile', 'input.mp4', new Uint8Array(videoData))
-  await ffmpeg.run(
-    '-ss', s,
-    '-i', 'input.mp4',
-    '-frames:v', '1',
-    '-q:v', '2',
-    'output.jpg'
-  )
+  await new Promise((resolve, reject) => {
+    ffmpeg(tempVideoPath)
+      .screenshots({
+        timestamps: [s],
+        filename: path.basename(tempImagePath),
+        folder: path.dirname(tempImagePath),
+        size: '720x?'
+      })
+      .on('end', resolve)
+      .on('error', reject)
+  })
 
-  const output = ffmpeg.FS('readFile', 'output.jpg')
-  const idKey = uuidv4().slice(0, 8)
-  cache[idKey] = Buffer.from(output)
-  res.end(`?id=${idKey}`)
+  const imageBuffer = await import('fs/promises').then(fs => fs.readFile(tempImagePath))
+  const randId = uuidv4().slice(0, 8)
+  cache[randId] = imageBuffer
+  res.end(`?id=${randId}`)
 }
+ 
