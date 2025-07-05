@@ -13,7 +13,7 @@ function parseTimeToSeconds(timeStr) {
 export default async function handler(req, res) {
   const { video, time } = req.query
   if (!video || !time) {
-    return res.status(400).send('Missing ?video & ?time=5s/1min')
+    return res.status(400).send('Missing ?video and/or ?time (e.g. 5s, 1min)')
   }
 
   const seconds = parseTimeToSeconds(time)
@@ -21,7 +21,7 @@ export default async function handler(req, res) {
 
   const browser = await puppeteer.launch({
     args: chrome.args,
-    executablePath: await chrome.executablePath,
+    executablePath: await chrome.executablePath || '/usr/bin/chromium-browser',
     headless: chrome.headless
   })
 
@@ -46,7 +46,7 @@ export default async function handler(req, res) {
 
   await page.waitForFunction(
     seconds => document.querySelector('video')?.currentTime >= seconds,
-    { timeout: 8000 },
+    { timeout: 10000 },
     seconds
   )
 
