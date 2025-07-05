@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "@ffmpeg/ffmpeg": "^0.12.2",
+    "express": "^4.18.2",
+    "fluent-ffmpeg": "^2.1.2",
+    "ffmpeg-static": "^4.4.0",
     "node-fetch": "^3.3.2",
     "uuid": "^9.0.0"
   }
 }
- 
