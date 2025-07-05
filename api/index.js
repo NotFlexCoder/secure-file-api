@@ -1,91 +1,57 @@
-import { createWriteStream } from 'fs'
-import { pipeline } from 'stream'
-import { promisify } from 'util'
-import { v4 as uuidv4 } from 'uuid'
-import fetch from 'node-fetch'
-import ffmpeg from 'fluent-ffmpeg'
-import ffmpegPath from 'ffmpeg-static'
-import { tmpdir } from 'os'
-import path from 'path'
-
-const streamPipeline = promisify(pipeline)
-ffmpeg.setFfmpegPath(ffmpegPath)
-
-const cache = {}
+import chrome from 'chrome-aws-lambda'
+import puppeteer from 'puppeteer-core'
 
 function parseTimeToSeconds(timeStr) {
-  const match = timeStr.match(/^(\d+)(s|min|h|d|mon|yrs)$/)
+  const match = timeStr.match(/^(\d+)(s|min|h)$/)
   if (!match) return null
   const num = parseInt(match[1])
   const unit = match[2]
-
-  const multipliers = {
-    s: 1,
-    min: 60,
-    h: 3600,
-    d: 86400,
-    mon: 2592000,
-    yrs: 31536000
-  }
-
-  return num * (multipliers[unit] || 1)
+  const multipliers = { s: 1, min: 60, h: 3600 }
+  return num * multipliers[unit]
 }
 
-const fallbackVideo = 'https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4'
-
-export default async (req, res) => {
-  const { video, time, id } = req.query
-
-  if (id && cache[id]) {
-    res.setHeader('Content-Type', 'image/jpeg')
-    res.send(cache[id])
-    delete cache[id]
-    return
-  }
-
-  if (!time) {
-    res.status(400).send('Missing ?time=1s/1min/etc')
-    return
+export default async function handler(req, res) {
+  const { video, time } = req.query
+  if (!video || !time) {
+    return res.status(400).send('Missing ?video & ?time=5s/1min')
   }
 
   const seconds = parseTimeToSeconds(time)
-  if (!seconds || isNaN(seconds)) {
-    res.status(400).send('Invalid time format')
-    return
-  }
+  if (!seconds) return res.status(400).send('Invalid time format')
 
-  let sourceVideo = fallbackVideo
-  if (video && video.startsWith('http')) {
-    sourceVideo = video
-  }
+  const browser = await puppeteer.launch({
+    args: chrome.args,
+    executablePath: await chrome.executablePath,
+    headless: chrome.headless
+  })
 
-  try {
-    const videoResponse = await fetch(sourceVideo)
-    if (!videoResponse.ok) throw new Error('Failed to download video')
+  const page = await browser.newPage()
 
-    const tempVideoPath = path.join(tmpdir(), `${uuidv4()}.mp4`)
-    const tempImagePath = path.join(tmpdir(), `${uuidv4()}.jpg`)
-    await streamPipeline(videoResponse.body, createWriteStream(tempVideoPath))
+  const html = `
+    <html>
+      <body style="margin:0;overflow:hidden">
+        <video id="v" src="${video}" style="width:100vw;height:100vh" autoplay muted></video>
+        <script>
+          const v = document.getElementById('v');
+          v.addEventListener('loadeddata', () => {
+            v.currentTime = ${seconds};
+          });
+        </script>
+      </body>
+    </html>
+  `
 
-    await new Promise((resolve, reject) => {
-      ffmpeg(tempVideoPath)
-        .screenshots({
-          timestamps: [seconds],
-          filename: path.basename(tempImagePath),
-          folder: path.dirname(tempImagePath),
-          size: '720x?'
-        })
-        .on('end', resolve)
-        .on('error', reject)
-    })
+  await page.setViewport({ width: 1280, height: 720 })
+  await page.setContent(html, { waitUntil: 'networkidle2' })
 
-    const imageBuffer = await import('fs/promises').then(fs => fs.readFile(tempImagePath))
-    const randId = uuidv4().slice(0, 8)
-    cache[randId] = imageBuffer
-    res.end(`?id=${randId}`)
-  } catch (e) {
-    console.error('Video Processing Failed:', e.message)
-    res.status(500).send('Error processing video.')
-  }
+  await page.waitForFunction(
+    () => document.querySelector('video')?.currentTime >= ${seconds},
+    { timeout: 8000 }
+  )
+
+  const buffer = await page.screenshot({ type: 'jpeg' })
+
+  await browser.close()
+  res.setHeader('Content-Type', 'image/jpeg')
+  res.send(buffer)
 }
- 
