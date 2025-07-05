@@ -13,8 +13,26 @@ ffmpeg.setFfmpegPath(ffmpegPath)
 
 const cache = {}
 
+function parseTimeToSeconds(timeStr) {
+  const match = timeStr.match(/^(\d+)(s|min|h|d|mon|yrs)$/)
+  if (!match) return null
+  const num = parseInt(match[1])
+  const unit = match[2]
+
+  const multipliers = {
+    s: 1,
+    min: 60,
+    h: 3600,
+    d: 86400,
+    mon: 2592000,
+    yrs: 31536000
+  }
+
+  return num * (multipliers[unit] || 1)
+}
+
 export default async (req, res) => {
-  const { video, s, id } = req.query
+  const { video, time, id } = req.query
 
   if (id && cache[id]) {
     res.setHeader('Content-Type', 'image/jpeg')
@@ -23,14 +41,20 @@ export default async (req, res) => {
     return
   }
 
-  if (!video || !s) {
-    res.status(400).send('Missing ?video=<url>&s=<timeInSec>')
+  if (!video || !time) {
+    res.status(400).send('Missing ?video=<url>&time=1s/1min/1d/1mon/1yrs')
+    return
+  }
+
+  const seconds = parseTimeToSeconds(time)
+  if (!seconds || isNaN(seconds)) {
+    res.status(400).send('Invalid time format')
     return
   }
 
   try {
     const videoResponse = await fetch(video)
-    if (!videoResponse.ok) throw new Error('Failed to download video')
+    if (!videoResponse.ok) throw new Error('Video download failed')
 
     const tempVideoPath = path.join(tmpdir(), `${uuidv4()}.mp4`)
     const tempImagePath = path.join(tmpdir(), `${uuidv4()}.jpg`)
@@ -39,7 +63,7 @@ export default async (req, res) => {
     await new Promise((resolve, reject) => {
       ffmpeg(tempVideoPath)
         .screenshots({
-          timestamps: [s],
+          timestamps: [seconds],
           filename: path.basename(tempImagePath),
           folder: path.dirname(tempImagePath),
           size: '720x?'
@@ -56,4 +80,3 @@ export default async (req, res) => {
     res.status(500).send('Error processing video.')
   }
 }
- 
