@@ -19,9 +19,14 @@ export default async function handler(req, res) {
   const seconds = parseTimeToSeconds(time)
   if (!seconds) return res.status(400).send('Invalid time format')
 
+  const executablePath = await chrome.executablePath
+  if (!executablePath) {
+    return res.status(500).send('Chrome executable not found')
+  }
+
   const browser = await puppeteer.launch({
     args: chrome.args,
-    executablePath: await chrome.executablePath || '/usr/bin/chromium-browser',
+    executablePath,
     headless: chrome.headless
   })
 
