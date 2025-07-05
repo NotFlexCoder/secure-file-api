@@ -1,7 +1,12 @@
 {
+  "name": "secure-file-api",
+  "version": "1.0.0",
+  "main": "index.js",
   "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
-    "puppeteer-core": "10.1.0",
-    "chrome-aws-lambda": "10.1.0"
+    "express": "^4.19.2"
   }
 }
